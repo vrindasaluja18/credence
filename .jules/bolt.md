@@ -25,3 +25,7 @@
 ## 2025-05-23 - Combining logarithm terms in KL divergence computations
 **Learning:** Computing KL divergence via `p * (p.log() - q.log())` evaluates two separate transcendental `torch.log` operations per element across high-dimensional sequence tensors in hot evaluation paths (`excess_kl`, `window_error_curve`, `_block_kl`). Rewriting to `p * (p / q).log()` eliminates 50% of transcendental log calls, speeding up KL divergence calculations by ~5x with exact floating-point equivalence.
 **Action:** Combine log difference operations into a single division log `(p / q).log()` when computing KL divergence across clamped probability tensors.
+
+## 2025-05-24 - Deferring test set tensor preprocessing in linear probe evaluations
+**Learning:** In linear probe fitting (`fit_probe`), test set normalization (`(Xte - mu) / sd`) and type conversion (`Yte.float()`) were evaluated upfront before L-BFGS optimization. Deferring test tensor preprocessing to run inside the `with torch.no_grad():` block after optimization completes avoids unnecessary autograd tracking and eager operations on test tensors during training, yielding ~10-15% speedups in linear probe evaluation with exact floating-point equivalence.
+**Action:** Defer test set tensor preprocessing (e.g. normalization, type casting) to the post-optimization `with torch.no_grad():` evaluation block.

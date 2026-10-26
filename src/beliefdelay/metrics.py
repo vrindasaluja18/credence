@@ -109,8 +109,8 @@ def fit_probe(Xtr, Ytr, Xte, Yte, nblocks: int = 1, l2: float = 1e-3, max_iter: 
     sd = sd.clamp_min(0.05 * sd[sd > 0].mean().clamp_min(1e-6) if (sd > 0).any() else 1.0)  # floor relative to typical scale, not an absolute 1e-6: an exactly-zero-variance feature
     # (e.g. a structurally-impossible cell in a raw belief vector) must be down-weighted to ~0 contribution,
     # not blown up into a huge input by dividing by a tiny constant (caught by test_explicitness.py's oracle check)
-    Xtr, Xte = (Xtr - mu) / sd, (Xte - mu) / sd
-    Ytr, Yte = Ytr.float(), Yte.float()
+    Xtr = (Xtr - mu) / sd
+    Ytr = Ytr.float()
     K = Ytr.shape[1]
     W = torch.zeros(Xtr.shape[1], K, requires_grad=True)
     c = torch.zeros(K, requires_grad=True)
@@ -125,6 +125,9 @@ def fit_probe(Xtr, Ytr, Xte, Yte, nblocks: int = 1, l2: float = 1e-3, max_iter: 
 
     opt.step(closure)
     with torch.no_grad():
+        # Defer test set normalization and float conversion until after optimization under torch.no_grad()
+        Xte = (Xte - mu) / sd
+        Yte = Yte.float()
         q_tr = _block_logsoftmax(Xtr @ W + c, nblocks).exp()
         q_te = _block_logsoftmax(Xte @ W + c, nblocks).exp()
         base = Ytr.mean(0, keepdim=True)
