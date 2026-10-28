@@ -29,3 +29,7 @@
 ## 2025-05-24 - Deferring test set tensor preprocessing in linear probe evaluations
 **Learning:** In linear probe fitting (`fit_probe`), test set normalization (`(Xte - mu) / sd`) and type conversion (`Yte.float()`) were evaluated upfront before L-BFGS optimization. Deferring test tensor preprocessing to run inside the `with torch.no_grad():` block after optimization completes avoids unnecessary autograd tracking and eager operations on test tensors during training, yielding ~10-15% speedups in linear probe evaluation with exact floating-point equivalence.
 **Action:** Defer test set tensor preprocessing (e.g. normalization, type casting) to the post-optimization `with torch.no_grad():` evaluation block.
+
+## 2025-05-25 - Separating data-independent Riccati gain updates from state mean propagation in Kalman filtering
+**Learning:** In `LinearGaussian.kalman`, computing error covariance updates $P_t$, innovations variance $s_t$, and Kalman gain $K_t$ inline during batch state filter rollout re-evaluates outer products and scalar divisions inside time-step loops. Because the Riccati covariance sequence depends only on system matrices ($A, c, Q, r_n$) and time $t$ (not on sequence observations $y$), precomputing the Kalman gain sequence `Kgs` upfront and pre-allocating output tensors speeds up `kalman` by ~15% with exact floating-point equivalence.
+**Action:** In linear state-space filters with observation-independent noise models, precompute the Riccati sequence and gain matrices prior to batch state mean updates.

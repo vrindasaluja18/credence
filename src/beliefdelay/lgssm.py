@@ -56,18 +56,38 @@ class LinearGaussian:
         B, Lp1 = y.shape
         L = Lp1 - 1
         A, c, Q = self.A, self.c, self.Q
-        m_prior, P_prior = torch.zeros(B, 2, dtype=DT), self.P0t.clone()
-        m_post, mu, S = torch.zeros(B, L, 2, dtype=DT), torch.zeros(B, L, dtype=DT), torch.zeros(L, dtype=DT)
+        device = y.device
+        AT = A.T
+
+        # Pre-allocate output and intermediate state tensors
+        m_post = torch.empty(B, L, 2, dtype=DT, device=device)
+        mu = torch.empty(B, L, dtype=DT, device=device)
+        S = torch.empty(L, dtype=DT, device=device)
+
+        # Optimization: Precompute data-independent Riccati covariance & Kalman gain sequence (Kg, S)
+        # across horizon length L, separating variance propagation from batch state updates.
+        Kg_list = []
+        P_prior = self.P0t.clone()
         for t in range(L):
-            s_t = c @ P_prior @ c + self.rn ** 2
+            cP = c @ P_prior
+            s_t = cP @ c + self.rn ** 2
             Kg = (P_prior @ c) / s_t
-            m = m_prior + (y[:, t] - m_prior @ c)[:, None] * Kg[None]
-            P_post = P_prior - torch.outer(Kg, c @ P_prior)
-            m_post[:, t] = m
-            m_prior = m @ A.T
-            P_prior = A @ P_post @ A.T + Q
-            mu[:, t] = m_prior @ c
+            Kg_list.append(Kg)
+            P_post = P_prior - torch.outer(Kg, cP)
+            P_prior = A @ P_post @ AT + Q
             S[t] = c @ P_prior @ c + self.rn ** 2
+
+        Kgs = torch.stack(Kg_list, dim=0)  # (L, 2)
+
+        # Batch state mean filter update rollout
+        m_prior = torch.zeros(B, 2, dtype=DT, device=device)
+        for t in range(L):
+            Kg_t = Kgs[t]
+            inn = y[:, t] - m_prior @ c
+            m = m_prior + inn.unsqueeze(1) * Kg_t
+            m_post[:, t] = m
+            m_prior = m @ AT
+            mu[:, t] = m_prior @ c
         return m_post, mu, S
 
     def steady_gain(self, iters: int = 2000) -> torch.Tensor:
