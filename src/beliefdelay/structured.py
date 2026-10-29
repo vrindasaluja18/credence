@@ -100,11 +100,15 @@ class KoopmanCell(nn.Module):
         r_step, cos_t, sin_t = torch.exp(log_r_step), torch.cos(theta_step), torch.sin(theta_step)
         a_re, a_im = r_step * cos_t, r_step * sin_t           # per-step multiplier a_t = r_step * e^{i theta_step}
         re, im = torch.zeros(B, self.k, device=x.device, dtype=x.dtype), torch.zeros(B, self.k, device=x.device, dtype=x.dtype)
-        outs = []
+        # Optimization: Collect real and imaginary component trajectories in separate lists and stack/cat
+        # after the time-step loop, avoiding T calls to torch.cat and intermediate tensor allocations per step.
+        res, ims = [], []
         for t in range(T):
             re, im = a_re[:, t] * re - a_im[:, t] * im + bre[:, t], a_re[:, t] * im + a_im[:, t] * re + bim[:, t]
-            outs.append(torch.cat([re, im], -1))
-        return self.readout(torch.stack(outs, 1))
+            res.append(re)
+            ims.append(im)
+        out = torch.cat([torch.stack(res, 1), torch.stack(ims, 1)], -1)
+        return self.readout(out)
 
 
 class NeuralBayesCell(nn.Module):
